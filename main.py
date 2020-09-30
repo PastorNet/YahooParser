@@ -2,6 +2,7 @@ import pandas as pd
 import datetime
 from urllib.request import urlopen
 from lxml import etree
+from os import mkdir
 
 
 class CompanyOnYahoo:
@@ -30,12 +31,13 @@ class CompanyOnYahoo:
                        f'events=history '
 
     # create link with url
-    def setup_LXML(self, name):
+
+    def setup_lxml(self):
 
         response = urlopen(self.url)
         htmlparser = etree.HTMLParser()
-        tree = etree.parse(response, htmlparser)
-        return tree
+        _tree_ = etree.parse(response, htmlparser)
+        return _tree_
 
     # return today key
     def get_current_date_key(self):
@@ -60,7 +62,8 @@ class CompanyOnYahoo:
     # which is the ratio of the values
     # of closed deals with a period of 3 days
 
-    def three_days_before_change(self, data):
+    @staticmethod
+    def three_days_before_change(data):
         data_mod = data.set_index('Date')
         data_mod.index = pd.to_datetime(data_mod.index)
         data_mod = data_mod.resample('3d').mean()
@@ -77,19 +80,27 @@ class CompanyOnYahoo:
 
     # save .csv tables in './CSV/<CompanyName>.csv'
     def save_csv(self, data, data_mod, data_news):
-        data.to_csv(f'./CSV/{self.name}.csv')
-        data_mod.to_csv(f'./CSV/{self.name}' + '_with3d.csv')
-        data_news.to_csv(f'./CSV/{self.name}' + '_latest_news.csv')
+        try:
+            data.to_csv(f'./CSV/{self.name}.csv')
+            data_mod.to_csv(f'./CSV/{self.name}' + '_with3d.csv')
+            data_news.to_csv(f'./CSV/{self.name}' + '_latest_news.csv')
+        except FileNotFoundError:
+            print(f'W:No such file or directory: `./CSV/{self.name}.csv`')
+            mkdir('./CSV')
 
     # get latest news in 'Summary' block
-    def get_news(self, tree_):
+    @staticmethod
+    def get_news(tree_):
         csv_news = []
         headers = tree_.xpath(
-            '//html/body/div[1]/div/div/div[1]/div/div[3]/div[1]/div/div[5]/div/div/div/ul/li[*]/div/div/div[*]/h3/a/text()')
+            '//html/body/div[1]/div/div/div[1]/div/div[3]/div[1]/div/div[5]/div/div/div/ul/'
+            'li[*]/div/div/div[*]/h3/a/text()')
         descriptions = tree_.xpath(
-            '//html/body/div[1]/div/div/div[1]/div/div[3]/div[1]/div/div[5]/div/div/div/ul/li[*]/div/div/div[*]/p/text()')
+            '//html/body/div[1]/div/div/div[1]/div/div[3]/div[1]/div/div[5]/div/div/div/ul/'
+            'li[*]/div/div/div[*]/p/text()')
         hrefs = tree_.xpath(
-            '//html/body/div[1]/div/div/div[1]/div/div[3]/div[1]/div/div[5]/div/div/div/ul/li[*]/div/div/div[*]/h3/a/@href')
+            '//html/body/div[1]/div/div/div[1]/div/div[3]/div[1]/div/div[5]/div/div/div/ul/'
+            'li[*]/div/div/div[*]/h3/a/@href')
         if headers:
             csv_news = pd.DataFrame({
                 'Headers': headers,
@@ -108,13 +119,13 @@ if __name__ == "__main__":
 
     for x in dictionary:
         c = CompanyOnYahoo(x, 86400, 'MAX')
-        tree_ = c.setup_LXML(c.name)
-        #get csv`s
+        tree = c.setup_lxml()
+        # get csv`s
         data_ = c.get_csv()
         mod_data = c.three_days_before_change(data_)
-        news = c.get_news(tree_)
+        news = c.get_news(tree)
         # save csv`s
-        if len(news)>0:
+        if len(news) > 0:
             c.save_csv(data_, mod_data, news)
         else:
             print(f"{c.name} does not exist in the list of finance.yahoo.com")
