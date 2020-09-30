@@ -116,16 +116,26 @@ if __name__ == "__main__":
 
     # test dictionary
     dictionary = ['PD', 'ZUO', 'PINS', 'ZM', 'PTVL', 'DOCU', 'CLDR', 'RUN']
-
+    load_bar = '..'
     for x in dictionary:
+        print(f'Loading{load_bar}')
+        load_bar += '.'
         c = CompanyOnYahoo(x, 86400, 'MAX')
-        tree = c.setup_lxml()
-        # get csv`s
-        data_ = c.get_csv()
-        mod_data = c.three_days_before_change(data_)
-        news = c.get_news(tree)
-        # save csv`s
-        if len(news) > 0:
-            c.save_csv(data_, mod_data, news)
-        else:
-            print(f"{c.name} does not exist in the list of finance.yahoo.com")
+
+        try:
+            tree = c.setup_lxml()
+            # get csv`s
+            data_ = c.get_csv()
+            mod_data = c.three_days_before_change(data_)
+            news = c.get_news(tree)
+            # save csv`s
+            if len(news) > 0:
+                c.save_csv(data_, mod_data, news)
+            else:
+                print(f"W: {c.name} does not exist in the list of finance.yahoo.com")
+        # noinspection PyBroadException
+        except Exception:
+            print('HTTP Error 503: Service Unavailable! Check connection!')
+    print('Finished! Check .csv in ./CSV/')
+
+
