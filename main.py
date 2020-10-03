@@ -1,28 +1,69 @@
-import pandas as pd
 import datetime
-from urllib.request import urlopen
-from lxml import etree
+from multiprocessing import Process
 from os import mkdir
+from time import sleep
+from urllib.request import urlopen
+
+import pandas as pd
+from lxml import etree
+
+
+class FuncProcess(Process):
+
+    def __init__(self, x_):
+        Process.__init__(self)
+        self.x__ = x_
+        Process.name = x_
+
+    def run(self):
+
+        c = CompanyOnYahoo(self.x__, 86400, 'MAX')
+
+        try:
+            tree = c.setup_lxml()
+
+            # get csv`s
+
+            data_ = c.three_days_before_change(c.get_csv())
+            news = c.get_news(tree)
+
+            # save csv`s
+
+            if len(news) > 0:
+                c.save_csv(data_, news)
+            else:
+                raise Exception(f"W: {c.name} does not exist in the list of finance.yahoo.com")
+
+        except Exception as e:
+            print(e)
 
 
 class CompanyOnYahoo:
 
     def __init__(self, name, tick_period, days):
-        # Day = 84000 on Yahoo
+
+        # Day = 86400 on Yahoo
+
         self.period = tick_period
         self.period_str = days
-        # first_date_key
+
+        # oldest_date_key
 
         self.key1 = self.get_oldest_date_key(self.period_str)
+
         # current_day_key
 
         self.key2, _ = self.get_current_date_key()
 
         # name of company
+
         self.name = name
+
         # url of company
+
         self.url = f'https://finance.yahoo.com/quote/{name}/news?p={name}'
         # url csv download
+
         self.csv_url = f'https://query1.finance.yahoo.com/v7/finance/download/' \
                        f'{name}?' \
                        f'period1={self.key1}' \
@@ -40,12 +81,14 @@ class CompanyOnYahoo:
         return _tree_
 
     # return today key
+
     def get_current_date_key(self):
         d0 = datetime.date(1970, 1, 1)
         d_current = datetime.date.today()
         return (d_current - d0).days * self.period, d_current
 
     # generate oldest key
+
     def get_oldest_date_key(self, days):
         _, current_date = self.get_current_date_key()
         if days == 'MAX':
@@ -55,6 +98,7 @@ class CompanyOnYahoo:
         return period1
 
     # csv-reader ( Pandas )
+
     def get_csv(self):
         return pd.read_csv(self.csv_url)
 
@@ -64,31 +108,32 @@ class CompanyOnYahoo:
 
     @staticmethod
     def three_days_before_change(data):
-        data_mod = data.set_index('Date')
-        data_mod.index = pd.to_datetime(data_mod.index)
-        data_mod = data_mod.resample('3d').mean()
-        data_mod["3day_before_change"] = 0.0
-        data['3day_before_change'] = 0.0
-        data_mod.reset_index(inplace=True)
+        data.reset_index()
+        data['Date'] = pd.to_datetime(data['Date'])
         i = 0
-        while i < len(data_mod) - 1:
-            data_mod.loc[i, "3day_before_change"] = data_mod.loc[i + 1, 'Close'] / data_mod.loc[i, 'Close']
+        j = 0
+        while i < len(data):
+            while j < len(data):
+                if (data.loc[j, 'Date'] - data.loc[i, 'Date']).days == 3:
+                    data.loc[j, '3days_before_change'] = data.loc[j, 'Close'] / data.loc[i, 'Close']
+                j += 1
             i += 1
-
-        # result = pd.concat([data, data_mod['3day_before_change']], axis=1) #not work now
-        return data_mod
+            j = i + 1
+        return data
 
     # save .csv tables in './CSV/<CompanyName>.csv'
-    def save_csv(self, data, data_mod, data_news):
+
+    def save_csv(self, data, data_news):
         try:
             data.to_csv(f'./CSV/{self.name}.csv')
-            data_mod.to_csv(f'./CSV/{self.name}' + '_with3d.csv')
             data_news.to_csv(f'./CSV/{self.name}' + '_latest_news.csv')
         except FileNotFoundError:
             print(f'W:No such file or directory: `./CSV/{self.name}.csv`')
             mkdir('./CSV')
+            self.save_csv(data, data_news)
 
     # get latest news in 'Summary' block
+
     @staticmethod
     def get_news(tree_):
         csv_news = []
@@ -101,12 +146,14 @@ class CompanyOnYahoo:
         hrefs = tree_.xpath(
             '//html/body/div[1]/div/div/div[1]/div/div[3]/div[1]/div/div[5]/div/div/div/ul/'
             'li[*]/div/div/div[*]/h3/a/@href')
+
         if headers:
             csv_news = pd.DataFrame({
                 'Headers': headers,
                 'Description': descriptions,
                 'Link': hrefs,
             })
+            csv_news['Link'] = 'https://finance.yahoo.com' + csv_news['Link']
         elif descriptions:
             csv_news = pd.DataFrame.empty
         return csv_news
@@ -114,28 +161,28 @@ class CompanyOnYahoo:
 
 if __name__ == "__main__":
 
-    # test dictionary
-    dictionary = ['PD', 'ZUO', 'PINS', 'ZM', 'PTVL', 'DOCU', 'CLDR', 'RUN']
+    # setup list of companies
+    try:
+
+        with open('./input.txt', 'r') as f:
+            pass
+
+    except FileNotFoundError:
+
+        print('Enter list of companies split by ",":')
+        with open('./input.txt', 'tw') as f:
+            f.writelines(input())
+
+    finally:
+        with open('./input.txt', 'r') as f:
+            dictionary = f.readline().replace(' ', '').split(',')
+            print(dictionary)
     load_bar = '..'
     for x in dictionary:
+        process = FuncProcess(x)
+        process.start()
+    while process.is_alive():
         print(f'Loading{load_bar}')
         load_bar += '.'
-        c = CompanyOnYahoo(x, 86400, 'MAX')
-
-        try:
-            tree = c.setup_lxml()
-            # get csv`s
-            data_ = c.get_csv()
-            mod_data = c.three_days_before_change(data_)
-            news = c.get_news(tree)
-            # save csv`s
-            if len(news) > 0:
-                c.save_csv(data_, mod_data, news)
-            else:
-                print(f"W: {c.name} does not exist in the list of finance.yahoo.com")
-        # noinspection PyBroadException
-        except Exception:
-            print('HTTP Error 503: Service Unavailable! Check connection!')
+        sleep(3)
     print('Finished! Check .csv in ./CSV/')
-
-
